@@ -1,0 +1,9 @@
+{
+  "appId": "com.papervocab.app",
+  "appName": "纸页单词本",
+  "webDir": "web",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f7f1e3"
+  }
+}

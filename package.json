@@ -1,0 +1,74 @@
+{
+  "name": "paper-vocab",
+  "productName": "纸页单词本",
+  "version": "1.0.0",
+  "description": "纸质词典风格的离线背单词桌面应用",
+  "main": "main.js",
+  "author": "PaperVocab",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-winstaller"
+    ]
+  },
+  "build": {
+    "appId": "com.papervocab.app",
+    "productName": "纸页单词本",
+    "asar": true,
+    "files": [
+      "main.js",
+      "index.html",
+      "manifest.json",
+      "sw.js",
+      "css/**",
+      "js/**",
+      "data/**",
+      "icons/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "纸页单词本",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    }
+  }
+}
