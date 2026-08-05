@@ -39,11 +39,10 @@ npm install
 npm run dist
 ```
 
-生成安装包位于 `dist/`（NSIS 安装版 + 便携版）。
 
 ### 安卓版
 
-需要 JDK 21 与 Android SDK（compileSdk 36）。工程位于 `android/`（默认不入库，涉及签名密钥，可本地用 Capacitor 重新生成）：
+需要 JDK 21 与 Android SDK（compileSdk 36）
 
 ```bash
 npx cap sync android
@@ -67,8 +66,6 @@ cd android && ./gradlew assembleRelease
 ├── js/                 应用逻辑（路由、词库、学习、复习、发音、备份）
 ├── data/words.json     内置词库（16,196 词）
 ├── web/                安卓端资源副本（生成）
-├── android/            安卓工程（本地生成，含签名密钥，不入库）
-├── dist/               构建产物（安装包，不入库）
 ├── main.js             Electron 桌面壳
 ├── package.json        依赖与打包配置
 ├── scripts/           词库导入与内嵌副本生成脚本
