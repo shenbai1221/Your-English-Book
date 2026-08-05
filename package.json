@@ -1,7 +1,7 @@
 {
   "name": "paper-vocab",
   "productName": "纸页单词本",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "纸质词典风格的离线背单词桌面应用",
   "main": "main.js",
   "author": "PaperVocab",

@@ -892,3 +892,182 @@ html[data-theme="apricot"] {
 .detail.swipe-in-right { animation: swipeInRight 0.22s ease-out both; }
 .detail.swipe-in-left { animation: swipeInLeft 0.22s ease-out both; }
 
+
+/* ---------- 字号与主题头部自适应（不遮挡） ---------- */
+.word-head { flex-wrap: wrap; }
+.word-head h2 {
+  font-size: calc(var(--read-size) * 1.9);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.word-head .phonetic {
+  font-size: calc(var(--read-size) * 0.95);
+  overflow-wrap: anywhere;
+}
+.popup-head { flex-wrap: wrap; }
+.popup-word h3 {
+  font-size: calc(var(--read-size) * 1.25);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.popup-word .phonetic {
+  font-size: calc(var(--read-size) * 0.8);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 切换动画：滑动 / 翻页 / 淡入 + 速度 ---------- */
+:root { --switch-out: 0.2s; --switch-in: 0.23s; }
+.detail.swipe-out-left, .detail.swipe-out-right {
+  transition: transform var(--switch-out) ease-out, opacity var(--switch-out) ease-out;
+}
+.detail.swipe-in-right { animation: swipeInRight var(--switch-in) ease-out both; }
+.detail.swipe-in-left { animation: swipeInLeft var(--switch-in) ease-out both; }
+
+.detail.flip-out-left, .detail.flip-out-right {
+  transition: transform var(--switch-out) ease-in, opacity var(--switch-out) ease-in;
+}
+.detail.flip-out-left {
+  transform-origin: left center;
+  transform: perspective(1200px) rotateY(38deg);
+  opacity: 0.45;
+}
+.detail.flip-out-right {
+  transform-origin: right center;
+  transform: perspective(1200px) rotateY(-38deg);
+  opacity: 0.45;
+}
+@keyframes flipInRight {
+  from { transform-origin: right center; transform: perspective(1200px) rotateY(-32deg); opacity: 0.4; }
+  to { transform-origin: right center; transform: none; opacity: 1; }
+}
+@keyframes flipInLeft {
+  from { transform-origin: left center; transform: perspective(1200px) rotateY(32deg); opacity: 0.4; }
+  to { transform-origin: left center; transform: none; opacity: 1; }
+}
+.detail.flip-in-right { animation: flipInRight var(--switch-in) ease-out both; }
+.detail.flip-in-left { animation: flipInLeft var(--switch-in) ease-out both; }
+
+.detail.fade-out { transition: opacity var(--switch-out) ease; opacity: 0; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.detail.fade-in { animation: fadeIn var(--switch-in) ease both; }
+
+/* ---------- 显示设置面板 ---------- */
+.readsize-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  background: rgba(51, 44, 33, 0.18);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+.readsize-mask.show { display: flex; }
+.readsize-panel {
+  width: 100%;
+  max-width: 560px;
+  background: var(--paper-hi);
+  border-radius: 16px 16px 0 0;
+  border-top: 1px solid var(--line-strong);
+  box-shadow: 0 -10px 40px rgba(40, 30, 10, 0.22);
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+}
+.panel-head h3 { margin: 0; font-size: 1.05rem; }
+.panel-body { padding: 6px 16px 10px; }
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px dashed var(--line);
+}
+.panel-row:first-of-type { border-top: 0; }
+.panel-label {
+  flex: 0 0 auto;
+  width: 64px;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-family: var(--sans);
+}
+.fs-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-hi);
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fs-btn:active { background: var(--accent-bg); }
+.fs-val {
+  flex: 0 0 auto;
+  min-width: 46px;
+  text-align: right;
+  font-size: 0.85rem;
+  color: var(--accent);
+  font-family: var(--sans);
+}
+input[type="range"] { flex: 1; accent-color: var(--accent); }
+
+/* ---------- 翻页动画 v2：Spring 收尾 + 阴影/弧度 + 纯合成器 ---------- */
+:root { --spring: cubic-bezier(0.2, 1.25, 0.4, 1); }
+.detail { position: relative; }
+.detail::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: var(--flip-op, 0);
+  border-radius: inherit;
+  will-change: opacity;
+}
+.detail[data-flip-dir="left"]::before { background: linear-gradient(90deg, rgba(30, 20, 5, 0.3), transparent 26%); }
+.detail[data-flip-dir="right"]::before { background: linear-gradient(270deg, rgba(30, 20, 5, 0.3), transparent 26%); }
+.detail[data-flip-dir="left"] { border-radius: 12px 0 0 12px; }
+.detail[data-flip-dir="right"] { border-radius: 0 12px 12px 0; }
+
+.detail.swiping,
+.detail.flip-out-left, .detail.flip-out-right,
+.detail.flip-in-left, .detail.flip-in-right {
+  will-change: transform, opacity;
+}
+
+.detail.flip-out-left, .detail.flip-out-right {
+  transition: transform var(--switch-out) cubic-bezier(0.4, 0, 0.7, 0.2), opacity var(--switch-out) ease-out;
+}
+.detail.flip-out-left { transform: translateX(-34%) scale(0.94); opacity: 0.45; }
+.detail.flip-out-right { transform: translateX(34%) scale(0.94); opacity: 0.45; }
+.detail.flip-out-left::before, .detail.flip-out-right::before { animation: flipShadowOut var(--switch-out) ease-out both; }
+
+@keyframes flipInRight {
+  from { transform: translateX(34%) scale(0.95); opacity: 0.25; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes flipInLeft {
+  from { transform: translateX(-34%) scale(0.95); opacity: 0.25; }
+  to { transform: none; opacity: 1; }
+}
+.detail.flip-in-right { animation: flipInRight var(--switch-in) var(--spring) both; }
+.detail.flip-in-left { animation: flipInLeft var(--switch-in) var(--spring) both; }
+.detail.flip-in-right::before, .detail.flip-in-left::before { animation: flipShadowIn var(--switch-in) ease-out both; }
+
+@keyframes flipShadowOut { from { opacity: 0.32; } to { opacity: 0; } }
+@keyframes flipShadowIn { from { opacity: 0.26; } to { opacity: 0; } }
+
+/* 滑动入场也带 Spring 收尾 */
+.detail.swipe-in-right { animation: swipeInRight var(--switch-in) var(--spring) both; }
+.detail.swipe-in-left { animation: swipeInLeft var(--switch-in) var(--spring) both; }
+
+/* ---------- 字号调节按钮：始终置顶、独立图层 ---------- */
+.read-size-knob { z-index: 95; will-change: transform; }
+

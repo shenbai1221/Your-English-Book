@@ -18,17 +18,23 @@
     readSize: 16,          // 阅读字号（px，可拖动调节）
     manageMode: false,     // 自定义词本管理模式
     theme: 'paper',        // 纸张颜色：paper/sage/mist/apricot
-    swipeDir: 0            // 滑动方向：1=下一个，-1=上一个
+    swipeDir: 0,           // 滑动方向：1=下一个，-1=上一个
+    switchStyle: 'slide',  // 单词切换动画：slide/flip/fade
+    switchSpeed: 'normal'  // 动画速度：slow/normal/fast
   };
   try {
     const saved = localStorage.getItem('vocab-accent');
     if (saved === 'uk' || saved === 'us') state.accent = saved;
     const defSaved = localStorage.getItem('vocab-defmode');
     if (defSaved === 'cn' || defSaved === 'en' || defSaved === 'both') state.defMode = defSaved;
-    const rs = parseInt(localStorage.getItem('vocab-readsize'), 10);
-    if (rs >= 13 && rs <= 28) state.readSize = rs;
+    const rs = parseFloat(localStorage.getItem('vocab-readsize'));
+    if (rs >= 12 && rs <= 32) state.readSize = rs;
     const themeSaved = localStorage.getItem('vocab-theme');
     if (themeSaved === 'paper' || themeSaved === 'sage' || themeSaved === 'mist' || themeSaved === 'apricot') state.theme = themeSaved;
+    const stStyle = localStorage.getItem('vocab-switchstyle');
+    if (stStyle === 'slide' || stStyle === 'flip' || stStyle === 'fade') state.switchStyle = stStyle;
+    const stSpeed = localStorage.getItem('vocab-switchspeed');
+    if (stSpeed === 'slow' || stSpeed === 'normal' || stSpeed === 'fast') state.switchSpeed = stSpeed;
   } catch (e) { /* localStorage 不可用则用默认值 */ }
 
   /* ---------- 数据与存储 ---------- */
@@ -77,6 +83,7 @@
     closeWordPopup();
     closeBackupModal();
     closeBookMask();
+    closeReadSizePanel();
     if (!parts.length) return viewBooks();
     switch (parts[0]) {
       case 'book': return viewBook(parts[1]);
@@ -545,7 +552,24 @@
       </article>`;
     if (state.swipeDir) {
       const art = appEl.querySelector('.detail');
-      if (art) art.classList.add(state.swipeDir === 1 ? 'swipe-in-right' : 'swipe-in-left');
+      if (art) {
+        const dir = state.swipeDir;
+        if (state.switchStyle === 'flip') {
+          art.dataset.flipDir = dir === 1 ? 'left' : 'right';
+          art.style.setProperty('--flip-op', '0.3');
+        }
+        if (state.switchStyle === 'fade') art.classList.add('fade-in');
+        else if (state.switchStyle === 'flip') art.classList.add(dir === 1 ? 'flip-in-right' : 'flip-in-left');
+        else art.classList.add(dir === 1 ? 'swipe-in-right' : 'swipe-in-left');
+        const animCls = ['swipe-in-right', 'swipe-in-left', 'flip-in-right', 'flip-in-left', 'fade-in'].find((c) => art.classList.contains(c));
+        if (animCls) {
+          setTimeout(() => {
+            art.classList.remove(animCls);
+            art.removeAttribute('data-flip-dir');
+            art.style.setProperty('--flip-op', '0');
+          }, switchOutMs() + 120);
+        }
+      }
       state.swipeDir = 0;
     }
     window.scrollTo(0, 0);
@@ -731,11 +755,12 @@
   /* ---------- 事件 ---------- */
   document.addEventListener('click', (e) => {
     if (swipeConsumed) { swipeConsumed = false; return; }
-    const maskIds = ['word-popup-mask', 'backup-mask', 'book-name-mask', 'book-picker-mask'];
+    const maskIds = ['word-popup-mask', 'backup-mask', 'book-name-mask', 'book-picker-mask', 'readsize-mask'];
     if (e.target && maskIds.indexOf(e.target.id) >= 0) {
       closeWordPopup();
       closeBackupModal();
       closeBookMask();
+      closeReadSizePanel();
       return;
     }
     if (e.target && (e.target.id === 'word-popup-mask' || e.target.id === 'backup-mask')) {
@@ -860,13 +885,35 @@
       if (window.AppState.dbOk) { try { window.VocabDB.deleteBook(book.id); } catch (e) { /* 忽略 */ } }
       UI.toast('已删除词本「' + book.name + '」');
       location.hash = '#/';
+    } else if (action === 'panel-close') {
+      closeReadSizePanel();
+    } else if (action === 'font-minus') {
+      applyReadSize(clampReadSize(state.readSize - 1), true);
+      syncReadSizePanel();
+    } else if (action === 'font-plus') {
+      applyReadSize(clampReadSize(state.readSize + 1), true);
+      syncReadSizePanel();
+    } else if (action === 'font-reset') {
+      applyReadSize(16, true);
+      syncReadSizePanel();
+    } else if (action === 'set-switch-style') {
+      state.switchStyle = t.dataset.style;
+      try { localStorage.setItem('vocab-switchstyle', state.switchStyle); } catch (e) { /* 忽略 */ }
+      syncReadSizePanel();
+    } else if (action === 'set-switch-speed') {
+      state.switchSpeed = t.dataset.speed;
+      try { localStorage.setItem('vocab-switchspeed', state.switchSpeed); } catch (e) { /* 忽略 */ }
+      applySwitchSettings();
+      syncReadSizePanel();
     } else if (action === 'pop-word') {
       openWordPopup(t.dataset.word);
     } else if (action === 'popup-close') {
       closeWordPopup();
     } else if (action === 'prev-word') {
+      state.swipeDir = -1;
       navigateWord(-1);
     } else if (action === 'next-word') {
+      state.swipeDir = 1;
       navigateWord(1);
     } else if (action === 'toggle-def') {
       toggleDef(t.dataset.word, Number(t.dataset.i), t.checked, t.closest('.word-detail'));
@@ -879,6 +926,7 @@
       closeWordPopup();
       closeBackupModal();
       closeBookMask();
+      closeReadSizePanel();
       return;
     }
     if (!document.body.classList.contains('detail')) return;
@@ -886,9 +934,11 @@
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
+      state.swipeDir = -1;
       navigateWord(-1);
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
+      state.swipeDir = 1;
       navigateWord(1);
     }
   });
@@ -920,6 +970,8 @@
     if (label) label.style.fontSize = Math.min(1.6, px / 16) + 'rem';
     const bubble = document.getElementById('read-size-bubble');
     if (bubble) bubble.textContent = px + 'px';
+    const pnl = document.getElementById('readsize-mask');
+    if (pnl && pnl.classList.contains('show')) syncReadSizePanel();
     if (persist) {
       try { localStorage.setItem('vocab-readsize', String(px)); } catch (e) { /* 忽略 */ }
     }
@@ -955,14 +1007,14 @@
     knob.addEventListener('pointermove', (e) => {
       if (!knob.classList.contains('dragging')) return;
       moved = Math.max(moved, Math.abs(e.clientX - startX), Math.abs(e.clientY - startY));
-      const px = Math.max(13, Math.min(28, Math.round(startSize + (startY - e.clientY) * 0.4)));
+      const px = Math.max(12, Math.min(32, Math.round((startSize + (startY - e.clientY) * 0.25) * 2) / 2));
       applyReadSize(px, false);
     });
     const stop = () => {
       if (!knob.classList.contains('dragging')) return;
       knob.classList.remove('dragging', 'showing');
       document.body.classList.remove('no-select');
-      if (moved < 6) applyReadSize(16, true); /* 轻点重置为默认 */
+      if (moved < 6) openReadSizePanel(); /* 轻点重置为默认 */
       else applyReadSize(state.readSize, true);
     };
     knob.addEventListener('pointerup', stop);
@@ -1255,7 +1307,7 @@
     const art = e.target.closest('.detail');
     if (!art) return;
     if (e.target.closest('button, a, input, .chipword, .speak, .read-size-knob')) return;
-    swipeState = { art: art, startX: e.clientX, startY: e.clientY, dx: 0, axis: null, active: false, pointerId: e.pointerId };
+    swipeState = { art: art, startX: e.clientX, startY: e.clientY, dx: 0, axis: null, active: false, pointerId: e.pointerId, t0: Date.now() };
     try { art.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
   });
   appEl.addEventListener('pointermove', (e) => {
@@ -1273,8 +1325,12 @@
     if (!swipeState.active) return;
     swipeState.dx = dx;
     const w = window.innerWidth || 390;
-    swipeState.art.style.transform = 'translateX(' + dx + 'px)';
-    swipeState.art.style.opacity = String(1 - Math.min(0.35, Math.abs(dx) / (w * 0.6)));
+    const ratio = Math.min(1, Math.abs(dx) / (w * 0.6));
+    const scale = 1 - ratio * 0.05;
+    swipeState.art.dataset.flipDir = dx < 0 ? 'right' : 'left';
+    swipeState.art.style.setProperty('--flip-op', String(Math.min(0.32, ratio * 0.34)));
+    swipeState.art.style.transform = 'translateX(' + dx + 'px) scale(' + scale.toFixed(3) + ')';
+    swipeState.art.style.opacity = String(1 - Math.min(0.35, ratio * 0.55));
   });
   function endSwipe(e) {
     if (!swipeState || e.pointerId !== swipeState.pointerId) return;
@@ -1286,21 +1342,32 @@
     art.classList.remove('swiping');
     art.style.opacity = '';
     const dx = s.dx;
+    const vx = Math.abs(dx) / Math.max(1, Date.now() - (s.t0 || Date.now()));
     const springBack = () => {
-      art.style.transition = 'transform 0.28s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.28s ease';
+      art.style.transition = 'transform 0.3s cubic-bezier(0.2, 1.25, 0.4, 1), opacity 0.3s ease';
       art.style.transform = '';
-      setTimeout(() => { art.style.transition = ''; }, 320);
+      art.style.opacity = '';
+      art.style.setProperty('--flip-op', '0');
+      setTimeout(() => { art.style.transition = ''; }, 340);
     };
     const threshold = 72;
+    const outClass = (dir) => {
+      if (state.switchStyle === 'fade') return 'fade-out';
+      if (state.switchStyle === 'flip') return dir === 1 ? 'flip-out-left' : 'flip-out-right';
+      return dir === 1 ? 'swipe-out-left' : 'swipe-out-right';
+    };
     const go = (dir) => {
       if (!hasNeighbor(dir)) return false;
       state.swipeDir = dir;
-      art.classList.add(dir === 1 ? 'swipe-out-left' : 'swipe-out-right');
-      setTimeout(() => { navigateWord(dir); }, 170);
+      art.dataset.flipDir = dir === 1 ? 'right' : 'left';
+      art.style.setProperty('--flip-op', '0.32');
+      art.classList.add(outClass(dir));
+      setTimeout(() => { navigateWord(dir); }, switchOutMs());
       return true;
     };
-    if (dx <= -threshold) { if (!go(1)) springBack(); }
-    else if (dx >= threshold) { if (!go(-1)) springBack(); }
+    const fast = vx > 0.9;
+    if (dx <= -threshold || (dx < -30 && fast)) { if (!go(1)) springBack(); }
+    else if (dx >= threshold || (dx > 30 && fast)) { if (!go(-1)) springBack(); }
     else { springBack(); }
     swipeConsumed = true;
     setTimeout(() => { swipeConsumed = false; }, 350);
@@ -1308,7 +1375,87 @@
   appEl.addEventListener('pointerup', endSwipe);
   appEl.addEventListener('pointercancel', endSwipe);
 
+
+  /* ---------- 显示设置面板（字号 / 切换动画 / 速度） ---------- */
+  const SWITCH_SPEED = { slow: 340, normal: 200, fast: 130 };
+
+  function switchOutMs() {
+    return SWITCH_SPEED[state.switchSpeed] || 200;
+  }
+
+  function applySwitchSettings() {
+    const out = (switchOutMs() / 1000).toFixed(2) + 's';
+    const inn = (Math.round(switchOutMs() * 1.15) / 1000).toFixed(2) + 's';
+    document.documentElement.style.setProperty('--switch-out', out);
+    document.documentElement.style.setProperty('--switch-in', inn);
+  }
+
+  function clampReadSize(v) {
+    return Math.max(12, Math.min(32, Math.round(v * 2) / 2));
+  }
+
+  function openReadSizePanel() {
+    let mask = document.getElementById('readsize-mask');
+    if (!mask) {
+      mask = document.createElement('div');
+      mask.id = 'readsize-mask';
+      mask.className = 'readsize-mask';
+      mask.innerHTML = '<div class="readsize-panel">'
+        + '<div class="panel-head"><h3>显示设置</h3><button class="popup-close" data-action="panel-close" aria-label="关闭">×</button></div>'
+        + '<div class="panel-body">'
+        + '<div class="panel-row"><span class="panel-label">字号</span>'
+        + '<button class="fs-btn" data-action="font-minus" aria-label="减小字号">−</button>'
+        + '<input type="range" id="font-range" min="12" max="32" step="0.5">'
+        + '<button class="fs-btn" data-action="font-plus" aria-label="增大字号">＋</button>'
+        + '<span class="fs-val" id="font-value"></span></div>'
+        + '<div class="panel-row"><span class="panel-label">切换动画</span>'
+        + '<span class="accent-switch" role="group">'
+        + '<button data-action="set-switch-style" data-style="slide">滑动</button>'
+        + '<button data-action="set-switch-style" data-style="flip">翻页</button>'
+        + '<button data-action="set-switch-style" data-style="fade">淡入</button>'
+        + '</span></div>'
+        + '<div class="panel-row"><span class="panel-label">动画速度</span>'
+        + '<span class="accent-switch" role="group">'
+        + '<button data-action="set-switch-speed" data-speed="slow">慢</button>'
+        + '<button data-action="set-switch-speed" data-speed="normal">标准</button>'
+        + '<button data-action="set-switch-speed" data-speed="fast">快</button>'
+        + '</span></div>'
+        + '<div class="panel-row"><button class="backup-btn" data-action="font-reset">恢复默认字号</button></div>'
+        + '</div></div>';
+      document.body.appendChild(mask);
+      document.addEventListener('input', (e) => {
+        if (e.target && e.target.id === 'font-range') {
+          applyReadSize(clampReadSize(parseFloat(e.target.value)), true);
+          syncReadSizePanel();
+        }
+      });
+    }
+    mask.classList.add('show');
+    syncReadSizePanel();
+  }
+
+  function closeReadSizePanel() {
+    const m = document.getElementById('readsize-mask');
+    if (m) m.classList.remove('show');
+  }
+
+  function syncReadSizePanel() {
+    const range = document.getElementById('font-range');
+    if (range) range.value = String(state.readSize);
+    const val = document.getElementById('font-value');
+    if (val) val.textContent = (Math.round(state.readSize * 10) / 10) + 'px';
+    document.querySelectorAll('#readsize-mask [data-action="set-switch-style"]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.style === state.switchStyle);
+    });
+    document.querySelectorAll('#readsize-mask [data-action="set-switch-speed"]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.speed === state.switchSpeed);
+    });
+  }
+
+
   /* ---------- 启动 ---------- */
+
+
 
 
   function registerSW() {
@@ -1328,6 +1475,7 @@
     }
     await initMastery();
     setupReadSizeKnob();
+    applySwitchSettings();
     applyTheme(state.theme, false);
     registerSW();
     /* 安卓系统返回键：先返回应用内上一页，首页时退出应用 */
