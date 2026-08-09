@@ -65,10 +65,10 @@ function constEq(a, b) {
   return diff === 0;
 }
 
-async function pbkdf2(password, salt) {
+async function pbkdf2(password, salt, iterations) {
   const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt, iterations: iterations, hash: 'SHA-256' },
     key,
     256
   );
@@ -76,15 +76,18 @@ async function pbkdf2(password, salt) {
 }
 async function hashPassword(password) {
   const salt = randBytes(16);
-  return 'pbkdf2$100000$' + hex(salt) + '$' + (await pbkdf2(password, salt));
+  /* Workers 免费版 CPU 限制 10ms，PBKDF2 迭代数需控制在预算内 */
+  const iterations = 10000;
+  return 'pbkdf2$' + iterations + '$' + hex(salt) + '$' + (await pbkdf2(password, salt, iterations));
 }
 async function verifyPassword(password, stored) {
   const parts = String(stored || '').split('$');
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
+  const iterations = Math.max(1000, Math.min(100000, parseInt(parts[1], 10) || 10000));
   try {
     const salt = unhex(parts[2]);
     const expect = parts[3];
-    const got = await pbkdf2(password, salt);
+    const got = await pbkdf2(password, salt, iterations);
     return constEq(expect, got);
   } catch (e) {
     return false;
@@ -144,7 +147,10 @@ function corsHeaders() {
 function json(data, status) {
   return new Response(JSON.stringify(data), {
     status: status || 200,
-    headers: Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, corsHeaders())
+    headers: Object.assign(
+      { 'Content-Type': 'application/json; charset=utf-8', 'X-Api-Version': '2' },
+      corsHeaders()
+    )
   });
 }
 function err(message, status) {
@@ -170,11 +176,15 @@ async function authUser(request, env) {
 function getSync(db, uid, kind, id) {
   return db.prepare('SELECT payload, updated_at FROM sync_items WHERE user_id=? AND kind=? AND item_id=?').bind(uid, kind, id).first();
 }
-function setSync(db, uid, kind, id, payload, ts) {
+function upsertSyncStmt(db, uid, kind, id, payload, ts) {
   return db.prepare(
     'INSERT INTO sync_items (user_id, kind, item_id, payload, updated_at) VALUES (?,?,?,?,?) ' +
-    'ON CONFLICT(user_id, kind, item_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at'
-  ).bind(uid, kind, id, payload, ts).run();
+    'ON CONFLICT(user_id, kind, item_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at ' +
+    'WHERE excluded.updated_at >= sync_items.updated_at'
+  ).bind(uid, kind, id, payload, ts);
+}
+function setSync(db, uid, kind, id, payload, ts) {
+  return upsertSyncStmt(db, uid, kind, id, payload, ts).run();
 }
 function allSync(db, uid, kind) {
   return db.prepare('SELECT payload FROM sync_items WHERE user_id=? AND kind=? ORDER BY item_id').bind(uid, kind).all()
@@ -257,18 +267,16 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const mastery = Array.isArray(body.mastery) ? body.mastery : [];
     const customBooks = Array.isArray(body.customBooks) ? body.customBooks : [];
+    const stmts = [];
     for (const rec of mastery) {
       if (!rec || typeof rec.id !== 'string') continue;
-      const ts = Number(rec.updatedAt) || 0;
-      const row = getSync(env.DB, uid, 'mastery', rec.id);
-      if (!row || ts >= row.updated_at) setSync(env.DB, uid, 'mastery', rec.id, JSON.stringify(rec), ts);
+      stmts.push(upsertSyncStmt(env.DB, uid, 'mastery', rec.id, JSON.stringify(rec), Number(rec.updatedAt) || 0));
     }
     for (const b of customBooks) {
       if (!b || typeof b.id !== 'string') continue;
-      const ts = Number(b.updatedAt) || 0;
-      const row = getSync(env.DB, uid, 'book', b.id);
-      if (!row || ts >= row.updated_at) setSync(env.DB, uid, 'book', b.id, JSON.stringify(b), ts);
+      stmts.push(upsertSyncStmt(env.DB, uid, 'book', b.id, JSON.stringify(b), Number(b.updatedAt) || 0));
     }
+    if (stmts.length) await env.DB.batch(stmts);
     const settings = mergedSettings(env.DB, uid, body.settings);
     return json({
       mastery: allSync(env.DB, uid, 'mastery'),
@@ -315,7 +323,9 @@ async function handleApi(request, env, url) {
         const words = Array.isArray(body.words) ? body.words.filter((w) => typeof w === 'string').slice(0, 300) : [];
         await env.DB.prepare('DELETE FROM picks WHERE plan_id=? AND day=?').bind(planId, day).run();
         const ins = env.DB.prepare('INSERT OR IGNORE INTO picks (plan_id, day, word) VALUES (?,?,?)');
-        for (const w of words) await ins.bind(planId, day, w).run();
+        const pickStmts = [];
+        for (const w of words) pickStmts.push(ins.bind(planId, day, w));
+        if (pickStmts.length) await env.DB.batch(pickStmts);
         return json({ day: day, words: words });
       }
     } else {
@@ -340,8 +350,12 @@ async function handleApi(request, env, url) {
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/')) return handleApi(request, env, url);
-    return env.ASSETS.fetch(request);
+    try {
+      const url = new URL(request.url);
+      if (url.pathname.startsWith('/api/')) return handleApi(request, env, url);
+      return env.ASSETS.fetch(request);
+    } catch (e) {
+      return json({ error: '服务器内部错误', detail: String((e && e.message) || e) }, 500);
+    }
   }
 };
