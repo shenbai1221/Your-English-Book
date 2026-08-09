@@ -1,5 +1,5 @@
-allowBuilds:
-  electron-winstaller: set this to true or false
+packages:
+  - '.'
 onlyBuiltDependencies:
   - electron
   - electron-winstaller
