@@ -66,7 +66,6 @@
 
   async function saveMastery(rec) {
     window.AppState.mastery.set(rec.id, rec);
-    if (window.Account) window.Account.markDirty();
     if (!window.AppState.dbOk) return;
     try {
       await window.VocabDB.put(rec);
@@ -139,7 +138,6 @@
       ${themeRowHTML()}
       ${customBooksHTML()}
       <div class="backup-actions">
-        <button class="backup-btn" data-action="open-account">👤 账号</button>
         <button class="backup-btn" data-action="export-progress">导出学习进度</button>
         <button class="backup-btn" data-action="import-progress">导入学习进度</button>
       </div>
@@ -788,14 +786,12 @@
     } else if (action === 'set-accent') {
       state.accent = t.dataset.accent;
       try { localStorage.setItem('vocab-accent', state.accent); } catch (err) { /* 忽略 */ }
-      if (window.Account) window.Account.markDirty();
       document.querySelectorAll('.accent-switch button').forEach((b) => {
         b.classList.toggle('on', b.dataset.accent === state.accent);
       });
     } else if (action === 'set-defmode') {
       state.defMode = t.dataset.mode;
       try { localStorage.setItem('vocab-defmode', state.defMode); } catch (err) { /* 忽略 */ }
-      if (window.Account) window.Account.markDirty();
       document.querySelectorAll('.defmode-switch button').forEach((b) => {
         b.classList.toggle('on', b.dataset.mode === state.defMode);
       });
@@ -803,8 +799,6 @@
         const w = window.AppState.data.words.find((x) => x.word === el.dataset.word);
         if (w) el.innerHTML = defsHTML(w);
       });
-    } else if (action === 'open-account') {
-      if (window.Account) window.Account.open();
     } else if (action === 'export-progress') {
       openBackupModal('export');
     } else if (action === 'import-progress') {
@@ -889,7 +883,6 @@
       }
       window.AppState.customBooks.delete(book.id);
       if (window.AppState.dbOk) { try { window.VocabDB.deleteBook(book.id); } catch (e) { /* 忽略 */ } }
-      if (window.Account) window.Account.pushTombstone(book.id);
       UI.toast('已删除词本「' + book.name + '」');
       location.hash = '#/';
     } else if (action === 'panel-close') {
@@ -906,12 +899,10 @@
     } else if (action === 'set-switch-style') {
       state.switchStyle = t.dataset.style;
       try { localStorage.setItem('vocab-switchstyle', state.switchStyle); } catch (e) { /* 忽略 */ }
-      if (window.Account) window.Account.markDirty();
       syncReadSizePanel();
     } else if (action === 'set-switch-speed') {
       state.switchSpeed = t.dataset.speed;
       try { localStorage.setItem('vocab-switchspeed', state.switchSpeed); } catch (e) { /* 忽略 */ }
-      if (window.Account) window.Account.markDirty();
       applySwitchSettings();
       syncReadSizePanel();
     } else if (action === 'pop-word') {
@@ -983,7 +974,6 @@
     if (pnl && pnl.classList.contains('show')) syncReadSizePanel();
     if (persist) {
       try { localStorage.setItem('vocab-readsize', String(px)); } catch (e) { /* 忽略 */ }
-      if (window.Account) window.Account.markDirty();
     }
   }
 
@@ -1192,9 +1182,7 @@
 
   /* ---------- 自定义词本 ---------- */
   async function saveCustomBook(book) {
-    book.updatedAt = Date.now();
     window.AppState.customBooks.set(book.id, book);
-    if (window.Account) window.Account.markDirty();
     if (!window.AppState.dbOk) return;
     try { await window.VocabDB.putBook(book); } catch (e) { console.warn('词本写入失败', e); }
   }
@@ -1230,7 +1218,6 @@
     document.documentElement.dataset.theme = theme;
     if (persist) {
       try { localStorage.setItem('vocab-theme', theme); } catch (e) { /* 忽略 */ }
-      if (window.Account) window.Account.markDirty();
     }
     document.querySelectorAll('.swatch').forEach((el) => {
       el.classList.toggle('on', el.dataset.theme === theme);
@@ -1466,51 +1453,6 @@
   }
 
 
-  /* ---------- 账号：设置读取/应用钩子 ---------- */
-  window.AccountHooks = {
-    getSettings: function () {
-      return { accent: state.accent, defMode: state.defMode, readSize: state.readSize,
-        theme: state.theme, switchStyle: state.switchStyle, switchSpeed: state.switchSpeed };
-    },
-    applySettings: function (s) {
-      if (!s) return;
-      if (s.accent && (s.accent === 'uk' || s.accent === 'us')) {
-        state.accent = s.accent;
-        try { localStorage.setItem('vocab-accent', state.accent); } catch (e) { /* 忽略 */ }
-        document.querySelectorAll('.accent-switch button').forEach((b) => {
-          b.classList.toggle('on', b.dataset.accent === state.accent);
-        });
-      }
-      if (s.defMode && (s.defMode === 'cn' || s.defMode === 'en' || s.defMode === 'both')) {
-        state.defMode = s.defMode;
-        try { localStorage.setItem('vocab-defmode', state.defMode); } catch (e) { /* 忽略 */ }
-        document.querySelectorAll('.defmode-switch button').forEach((b) => {
-          b.classList.toggle('on', b.dataset.mode === state.defMode);
-        });
-        document.querySelectorAll('.defs-list').forEach((el) => {
-          const w = window.AppState.data.words.find((x) => x.word === el.dataset.word);
-          if (w) el.innerHTML = defsHTML(w);
-        });
-      }
-      if (typeof s.readSize === 'number' && s.readSize >= 12 && s.readSize <= 32) {
-        applyReadSize(s.readSize, true);
-      }
-      if (s.theme && ['paper', 'sage', 'mist', 'apricot'].indexOf(s.theme) >= 0) {
-        applyTheme(s.theme, true);
-      }
-      if (s.switchStyle && ['slide', 'flip', 'fade'].indexOf(s.switchStyle) >= 0) {
-        state.switchStyle = s.switchStyle;
-        try { localStorage.setItem('vocab-switchstyle', state.switchStyle); } catch (e) { /* 忽略 */ }
-      }
-      if (s.switchSpeed && ['slow', 'normal', 'fast'].indexOf(s.switchSpeed) >= 0) {
-        state.switchSpeed = s.switchSpeed;
-        try { localStorage.setItem('vocab-switchspeed', state.switchSpeed); } catch (e) { /* 忽略 */ }
-      }
-      applySwitchSettings();
-      syncReadSizePanel();
-    }
-  };
-
   /* ---------- 启动 ---------- */
 
 
@@ -1554,7 +1496,6 @@
     }
     window.addEventListener('hashchange', route);
     route();
-    if (window.Account) window.Account.init();
   }
 
   init();

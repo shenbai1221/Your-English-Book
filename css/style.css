@@ -1071,17 +1071,3 @@ input[type="range"] { flex: 1; accent-color: var(--accent); }
 /* ---------- 字号调节按钮：始终置顶、独立图层 ---------- */
 .read-size-knob { z-index: 95; will-change: transform; }
 
-
-/* ---------- 账号与云同步 ---------- */
-.account-mask { align-items: center; z-index: 94; }
-.account-dialog {
-  width: min(92vw, 420px);
-  background: var(--paper-hi);
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  box-shadow: 0 14px 44px rgba(40, 30, 10, 0.24);
-}
-.acc-status { font-size: 0.82rem; color: var(--ink-soft); padding: 10px 2px 2px; font-family: var(--sans); }
-.acc-status.on { color: var(--accent); font-weight: 700; }
-.acc-label { display: block; font-size: 0.78rem; color: var(--ink-soft); margin: 10px 2px 4px; font-family: var(--sans); }
-.account-actions { display: flex; gap: 10px; padding-top: 14px; flex-wrap: wrap; }
