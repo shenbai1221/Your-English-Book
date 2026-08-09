@@ -1,5 +1,5 @@
 /* 纸页单词本 Service Worker：缓存应用外壳与词库，支持离线使用 */
-const CACHE_NAME = 'paper-vocab-v21';
+const CACHE_NAME = 'paper-vocab-v22';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,8 @@ const ASSETS = [
   './js/data-embedded.js',
   './js/ui.js',
   './js/app.js',
+  './js/backend.js',
+  './js/account.js',
   './data/words.json',
   './manifest.json',
   './icons/icon-192.png',
