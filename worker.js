@@ -77,13 +77,13 @@ async function pbkdf2(password, salt, iterations) {
 async function hashPassword(password) {
   const salt = randBytes(16);
   /* Workers 免费版 CPU 限制 10ms，PBKDF2 迭代数需控制在预算内 */
-  const iterations = 10000;
+  const iterations = 2000;
   return 'pbkdf2$' + iterations + '$' + hex(salt) + '$' + (await pbkdf2(password, salt, iterations));
 }
 async function verifyPassword(password, stored) {
   const parts = String(stored || '').split('$');
   if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
-  const iterations = Math.max(1000, Math.min(100000, parseInt(parts[1], 10) || 10000));
+  const iterations = Math.max(500, Math.min(100000, parseInt(parts[1], 10) || 2000));
   try {
     const salt = unhex(parts[2]);
     const expect = parts[3];
@@ -148,7 +148,7 @@ function json(data, status) {
   return new Response(JSON.stringify(data), {
     status: status || 200,
     headers: Object.assign(
-      { 'Content-Type': 'application/json; charset=utf-8', 'X-Api-Version': '2' },
+      { 'Content-Type': 'application/json; charset=utf-8', 'X-Api-Version': '3' },
       corsHeaders()
     )
   });
@@ -212,6 +212,31 @@ async function handleApi(request, env, url) {
   if (method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
 
   if (path === '/api/health') return json({ ok: true, time: Date.now() });
+
+  if (path === '/api/diag' && method === 'GET') {
+    if (!rateLimit(ip, 'diag', 10, 60 * 1000)) return err('尝试过于频繁，请稍后再试', 429);
+    const out = { ok: true, time: Date.now() };
+    try {
+      await ensureSchema(env);
+      const q = env.DB.prepare('SELECT 1 AS one').first();
+      out.d1 = !!(q && q.one);
+    } catch (e) {
+      out.d1 = false;
+      out.d1Error = String((e && e.message) || e);
+    }
+    const n = Math.max(500, Math.min(10000, parseInt(url.searchParams.get('hash') || '2000', 10) || 2000));
+    try {
+      const salt = randBytes(16);
+      const t0 = Date.now();
+      await pbkdf2('diag-password', salt, n);
+      out.pbkdf2Iterations = n;
+      out.pbkdf2Ms = Date.now() - t0;
+    } catch (e) {
+      out.pbkdf2Ms = -1;
+      out.pbkdf2Error = String((e && e.message) || e);
+    }
+    return json(out);
+  }
 
   if (path === '/api/auth/register' && method === 'POST') {
     if (!rateLimit(ip, 'auth', 20, 15 * 60 * 1000)) return err('尝试过于频繁，请稍后再试', 429);

@@ -34,8 +34,16 @@
       throw new Error('无法连接服务器（' + (base || '同源') + '）');
     }
     let data = null;
-    try { data = await res.json(); } catch (e) { /* 忽略 */ }
-    if (!res.ok) throw new Error((data && data.error) || ('网络错误(' + res.status + ')'));
+    let bodyText = '';
+    try {
+      const clone = res.clone();
+      bodyText = await clone.text();
+    } catch (e) { /* 忽略 */ }
+    try { data = JSON.parse(bodyText); } catch (e) { /* 忽略 */ }
+    if (!res.ok) {
+      const extra = bodyText ? '：' + bodyText.replace(/\s+/g, ' ').slice(0, 160) : '';
+      throw new Error((data && data.error) || ('网络错误(' + res.status + ')' + extra));
+    }
     return data;
   }
 
