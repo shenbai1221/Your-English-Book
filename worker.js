@@ -6,6 +6,13 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  username TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sync_items (
   user_id INTEGER NOT NULL,
   kind TEXT NOT NULL,
@@ -37,13 +44,6 @@ function b64urlEncode(str) {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-}
-function b64urlDecode(str) {
-  let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (b64.length % 4) b64 += '=';
-  const bin = atob(b64);
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  return dec.decode(bytes);
 }
 function hex(bytes) {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -91,30 +91,19 @@ async function verifyPassword(password, stored) {
   }
 }
 
-async function signJwt(user, secret, expiresSec) {
-  const header = b64urlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const now = Math.floor(Date.now() / 1000);
-  const body = b64urlEncode(JSON.stringify({ id: user.id, username: user.username, iat: now, exp: now + expiresSec }));
-  const data = header + '.' + body;
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
-  return data + '.' + b64urlEncode(String.fromCharCode.apply(null, new Uint8Array(sig)));
+async function sha256Hex(s) {
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(s));
+  return hex(new Uint8Array(digest));
 }
-async function verifyJwt(token, secret) {
-  try {
-    const parts = String(token || '').split('.');
-    if (parts.length !== 3) return null;
-    const data = parts[0] + '.' + parts[1];
-    const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
-    const sigStr = b64urlEncode(String.fromCharCode.apply(null, new Uint8Array(sig)));
-    if (!constEq(sigStr, parts[2])) return null;
-    const payload = JSON.parse(b64urlDecode(parts[1]));
-    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch (e) {
-    return null;
-  }
+async function createSession(db, user) {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const token = b64urlEncode(String.fromCharCode.apply(null, bytes));
+  const hash = await sha256Hex(token);
+  await db.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Date.now()).run();
+  await db.prepare('INSERT INTO sessions (token_hash, user_id, username, created_at, expires_at) VALUES (?,?,?,?,?)')
+    .bind(hash, user.id, user.username, Date.now(), Date.now() + 30 * 24 * 3600 * 1000).run();
+  return token;
 }
 
 let schemaPromise = null;
@@ -172,9 +161,10 @@ async function authUser(request, env) {
   const h = request.headers.get('Authorization') || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : null;
   if (!token) return null;
-  const secret = env.JWT_SECRET;
-  if (!secret) return null;
-  return verifyJwt(token, secret);
+  const hash = await sha256Hex(token);
+  const row = env.DB.prepare('SELECT user_id, username FROM sessions WHERE token_hash=? AND expires_at>?')
+    .bind(hash, Date.now()).first();
+  return row ? { id: Number(row.user_id), username: row.username } : null;
 }
 
 function getSync(db, uid, kind, id) {
@@ -215,7 +205,6 @@ async function handleApi(request, env, url) {
 
   if (path === '/api/auth/register' && method === 'POST') {
     if (!rateLimit(ip, 'auth', 20, 15 * 60 * 1000)) return err('尝试过于频繁，请稍后再试', 429);
-    if (!env.JWT_SECRET) return err('服务器未配置 JWT_SECRET', 503);
     const body = await request.json().catch(() => ({}));
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
@@ -228,13 +217,12 @@ async function handleApi(request, env, url) {
     const info = await env.DB.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?,?,?)')
       .bind(username, hash, Date.now()).run();
     const user = { id: Number(info.meta.last_row_id), username: username };
-    const token = await signJwt(user, env.JWT_SECRET, 30 * 24 * 3600);
+    const token = await createSession(env.DB, user);
     return json({ token: token, user: user });
   }
 
   if (path === '/api/auth/login' && method === 'POST') {
     if (!rateLimit(ip, 'auth', 20, 15 * 60 * 1000)) return err('尝试过于频繁，请稍后再试', 429);
-    if (!env.JWT_SECRET) return err('服务器未配置 JWT_SECRET', 503);
     const body = await request.json().catch(() => ({}));
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
@@ -242,7 +230,7 @@ async function handleApi(request, env, url) {
     const row = env.DB.prepare('SELECT * FROM users WHERE username=?').bind(username).first();
     if (!row || !(await verifyPassword(password, row.password_hash))) return err('用户名或密码错误', 401);
     const user = { id: Number(row.id), username: row.username };
-    const token = await signJwt(user, env.JWT_SECRET, 30 * 24 * 3600);
+    const token = await createSession(env.DB, user);
     return json({ token: token, user: user });
   }
 
