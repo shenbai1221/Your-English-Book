@@ -2,14 +2,15 @@
 (function () {
   'use strict';
   const KEY = 'vocab-account';
+  const DEFAULT_BASE = 'https://your-english-book.worldamong123.workers.dev';
   let token = null;
   let username = '';
-  let base = '';
+  let base = DEFAULT_BASE;
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
     token = saved.token || null;
     username = saved.username || '';
-    base = saved.base || '';
+    base = saved.base || DEFAULT_BASE;
   } catch (e) { /* 忽略 */ }
 
   function persist() {
@@ -30,7 +31,7 @@
         body: body !== undefined ? JSON.stringify(body) : undefined
       });
     } catch (e) {
-      throw new Error('无法连接服务器');
+      throw new Error('无法连接服务器（' + (base || '同源') + '）');
     }
     let data = null;
     try { data = await res.json(); } catch (e) { /* 忽略 */ }

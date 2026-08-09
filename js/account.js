@@ -123,7 +123,7 @@
     mask.innerHTML = dialogHTML();
     mask.classList.add('show');
     const serverInput = document.getElementById('acc-server');
-    if (serverInput && !serverInput.value) serverInput.value = location.origin;
+    if (serverInput && !serverInput.value && window.Backend) serverInput.value = window.Backend.base;
   }
 
   function close() {
